@@ -24,7 +24,7 @@ payload1 = {"unique_id": "vm-kesseltemperatur",
                "device_class": "temperature",
                "name": "Kesseltemperatur",
                "state_topic": "homeassistant/sensor/vm-kesseltemperatur/state",
-               "unit_of_measurement": "'C",
+               "unit_of_measurement": "°C",
                "icon": "mdi:heat-wave",
                "value_template": "{{ value_json.temperature }}" }
 topic2 = "homeassistant/sensor/vm-aussentemperatur"
@@ -32,8 +32,8 @@ payload2 = {"unique_id": "vm-aussentemperatur",
                "device_class": "temperature",
                "name": "Aussentemperatur",
                "state_topic": "homeassistant/sensor/vm-aussentemperatur/state",
-               "unit_of_measurement": "'C",
-               "icon": "mdi:heat-wave",
+               "unit_of_measurement": "°C",
+               "icon": "mdi:thermometer",
                "value_template": "{{ value_json.temperature }}" }
 topic3 = "homeassistant/sensor/vm-brennerstarts"
 payload3 = {"unique_id": "vm-brennerstarts",
@@ -58,7 +58,7 @@ payload6 = {"unique_id": "vm-speichertemperatur",
                "device_class": "temperature",
                "name": "Speichertemperatur",
                "state_topic": "homeassistant/sensor/vm-speichertemperatur/state",
-               "unit_of_measurement": "'C",
+               "unit_of_measurement": "°C",
                "icon": "mdi:heat-wave",
                "value_template": "{{ value_json.temperature }}" }
 topic7 = "homeassistant/sensor/vm-brennerstatus"
@@ -67,6 +67,12 @@ payload7 = {"unique_id": "vm-brennerstatus",
                "state_topic": "homeassistant/sensor/vm-brennerstatus/state",
                "icon": "mdi:state-machine",
                "value_template": "{{ value_json.state }}" }
+topic8 = "homeassistant/sensor/vm-datum_uhrzeit"
+payload8 = {"unique_id": "vm-datum_uhrzeit",
+               "name": "Systemzeit",
+               "state_topic": "homeassistant/sensor/vm-datum_uhrzeit/state",
+               "icon": "mdi:home-clock",
+               "value_template": "{{ value_json.clock }}" }
 
 def twos_complement(hexstr):
 
@@ -107,21 +113,23 @@ mqc.loop_start()
 command = b'\x04'
 
 # this commands we want to send
-cmd=[b'\xF7\x00\xF8\x02',   #Typ
+cmd=[
+    #b'\xF7\x00\xF8\x02',   #Typ
     b'\xF7\x08\x02\x02',    # Kessel Temperatur
     b'\xF7\x08\x04\x02',    # Speicher Temperatur
     b'\xF7\x08\x00\x02',    # Aussentemperatur
     b'\xF7\x08\x8A\x04',    # Brennerstarts
     b'\xF7\x08\x8E\x08',    # Systemzeit
-    b'\xF7\x23\x00\x01',    # Frostschutz
-    b'\xF7\x23\x01\x01',    # Betriebsart
-    b'\xF7\x23\x02\x01',    # Sparbetrieb
-    b'\xF7\x23\x03\x01',    # Partybetrieb
-    b'\xF7\x23\x06\x01',    # Solltemperatur
+    #b'\xF7\x23\x00\x01',    # Frostschutz
+    #b'\xF7\x23\x01\x01',    # Betriebsart
+    #b'\xF7\x23\x02\x01',    # Sparbetrieb
+    #b'\xF7\x23\x03\x01',    # Partybetrieb
+    #b'\xF7\x23\x06\x01',    # Solltemperatur
     b'\xF7\x29\x06\x01',    # Pumpe Heizung
     b'\xF7\x08\x45\x01',    # Pumpe Speicher
     b'\xF7\x55\x1E\x01',    # Brennerstatus
-    b'\xF7\x75\x79\x01']    # Fehlercode
+    b'\xF7\x75\x79\x01'     # Fehlercode
+    ]    
 
 # counter
 cnt = 0;
@@ -145,7 +153,11 @@ try:
     while True:
 
         # convert to hex string
-        data = ser.readline().hex()
+        try:
+            data = ser.readline().hex()
+        except:
+            data = []
+            
         if(len(data) > 0):
 
             i = i + 1
@@ -198,6 +210,7 @@ try:
                            print('Pumpe A1M1: AUS')
                            dataW = { 'pump':    'OFF'}
                            mqc.publish(topic, json.dumps(dataW))
+                           
                     elif(command.hex().startswith('f70845')):
                            
                        topic = topic5 + '/config'
@@ -295,9 +308,21 @@ try:
                    mqc.publish(topic, json.dumps(data)) 
                 
             if(len(data) == 16):
-                print('Datum/Zeit: ' + data[:6] + ' ' + data[10:])
+                
+                dateTime = data[6:8] + '.' + data[4:6] + '.' + data[0:4] + ' ' + data[10:12] + ':' + data[12:14]
+                
+                print('Datum/Zeit: ' + dateTime)
+                
+                topic = topic8 + '/config'
+                dataW = payload8
+                mqc.publish(topic, json.dumps(dataW))
 
-            if '05' in data:
+                topic = topic8 + '/state'
+                
+                dataW = { 'clock':    dateTime }
+                mqc.publish(topic, json.dumps(dataW))
+
+            if ('05' in data) and (len(data) == 2):
 
                 # send ACK
                 command = b'\x01' #ACK
@@ -311,6 +336,7 @@ try:
                 # send command
                 command = cmd[cnt]
                 ser.write(command)
+                #print("Send " + command.hex())
 
 except:
     print(traceback.format_exc())
